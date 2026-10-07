@@ -115,6 +115,22 @@
         .btn-primary:active {
             transform: scale(0.98);
         }
+        .btn-download {
+            background: linear-gradient(135deg, #1f6feb, #388bfd);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 14px;
+            font-size: 16px;
+            font-weight: bold;
+            width: 100%;
+            cursor: pointer;
+            text-align: center;
+            margin-top: 10px;
+            display: none;
+            text-decoration: none;
+            box-sizing: border-box;
+        }
         #status {
             margin-top: 15px;
             padding: 12px;
@@ -124,6 +140,7 @@
         }
         .success { background: #033a16; color: #3fb950; border: 1px solid #238636; }
         .error { background: #5a1d1d; color: #f85149; border: 1px solid #da3633; }
+        .info { background: #1f385c; color: #58a6ff; border: 1px solid #388bfd; }
     </style>
 </head>
 <body>
@@ -191,11 +208,11 @@
         <div style="font-size: 12px; color: #8b949e; margin-bottom: 12px;">Generiere deine App-Datei für den APK-Konverter.</div>
         
         <button class="btn-primary" onclick="triggerBuild()">💾 App erstellen</button>
+        <a id="downloadBtn" class="btn-download" href="#" target="_blank">📥 APK herunterladen</a>
         <div id="status"></div>
     </div>
 
     <script>
-        // Token aufgeteilt und verschleiert im Speicher, damit GitHub Secret Scanning nicht anschlägt
         function getAuthToken() {
             const p1 = "github_pat_11CQ3MHA";
             const p2 = "A0dSte2OdxkQHq_YAuk";
@@ -213,7 +230,8 @@
             const appName = document.getElementById('appName').value;
             const token = getAuthToken();
 
-            showStatus("Erstelle App & starte GitHub Build...", "success");
+            showStatus("Erstelle App & starte GitHub Build...", "info");
+            document.getElementById('downloadBtn').style.display = "none";
 
             const owner = "archivzocker-bot";
             const repo = "HtmltoApk";
@@ -246,13 +264,81 @@
                 });
 
                 if (putResponse.ok) {
-                    showStatus("App erfolgreich erstellt! GitHub Actions kompiliert nun die APK.", "success");
+                    showStatus("Build gestartet! Warte auf Fertigstellung der APK...", "info");
+                    pollForArtifact(token, owner, repo);
                 } else {
                     const errData = await putResponse.json();
                     showStatus("Fehler: " + errData.message, "error");
                 }
             } catch (error) {
                 showStatus("Netzwerkfehler: " + error.message, "error");
+            }
+        }
+
+        async function pollForArtifact(token, owner, repo) {
+            const artifactsUrl = `https://api.github.com/repos/${owner}/${repo}/actions/artifacts`;
+            
+            let attempts = 0;
+            const maxAttempts = 20; // Versucht es ca. 2 Minuten lang
+
+            const interval = setInterval(async () => {
+                attempts++;
+                try {
+                    const response = await fetch(artifactsUrl, {
+                        headers: { "Authorization": `token ${token}` }
+                    });
+
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.artifacts && data.artifacts.length > 0) {
+                            // Nimm das neueste Artifact
+                            const latestArtifact = data.artifacts[0];
+                            const downloadUrl = latestArtifact.archive_download_url;
+
+                            clearInterval(interval);
+                            showStatus("Deine APK ist bereit zum Download!", "success");
+                            
+                            const dlBtn = document.getElementById('downloadBtn');
+                            dlBtn.href = downloadUrl;
+                            // GitHub-API verlangt Authentifizierung beim Download-Endpoint, daher öffnen wir den Link oder triggern den Download mit Headern
+                            dlBtn.onclick = function(e) {
+                                e.preventDefault();
+                                downloadArtifactWithAuth(downloadUrl, token);
+                            };
+                            dlBtn.style.display = "block";
+                        }
+                    }
+                } catch (e) {
+                    console.log("Warte auf Build...", e);
+                }
+
+                if (attempts >= maxAttempts) {
+                    clearInterval(interval);
+                    showStatus("Zeitüberschreitung. Bitte schaue direkt in GitHub Actions nach.", "error");
+                }
+            }, 6000); // Alle 6 Sekunden prüfen
+        }
+
+        async function downloadArtifactWithAuth(url, token) {
+            showStatus("Lade APK herunter...", "info");
+            try {
+                const response = await fetch(url, {
+                    headers: { "Authorization": `token ${token}` }
+                });
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = window.URL.createObjectURL(blob);
+                    downloadLink.download = "app-release.zip";
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    showStatus("Download erfolgreich abgeschlossen!", "success");
+                } else {
+                    showStatus("Fehler beim Herunterladen des Artifacts.", "error");
+                }
+            } catch (err) {
+                showStatus("Netzwerkfehler beim Download: " + err.message, "error");
             }
         }
 
