@@ -12,28 +12,24 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Set up JDK 17
+    - name: Set up Java
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
 
-    - name: Create Dummy Android Project & Build APK
+    - name: Install Cordova and Build
       run: |
-        # Wir erstellen hier ein einfaches Android-Projekt im Hintergrund
-        npx -y cordova-create myApp com.example.app MyApp
-        cd myApp
-        # Füge Android Plattform hinzu
         npm install -g cordova
+        cordova-create myApp com.example.app MyApp
+        cd myApp
         cordova platform add android
-
-        # Kompilieren der APK im Debug-Modus
         cordova build android --debug
-
-        # Die fertige APK an einen sicheren Ort kopieren
         mkdir -p ../output
         cp platforms/android/app/build/outputs/apk/debug/app-debug.apk ../output/my-android-app.apk
 
